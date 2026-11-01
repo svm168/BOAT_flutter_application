@@ -36,12 +36,11 @@ android {
     }
 
     applicationVariants.all {
+        val variant = this
         outputs.all {
-            // Kotlin DSL requires explicit casting to access outputFileName
-            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            if (output.outputFileName.endsWith(".apk")) {
-                // Safely read the version from Flutter's local properties
-                val versionName = localProperties.getProperty("flutter.versionName") ?: "1.0.0"
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            if (output != null && output.outputFileName.endsWith(".apk")) {
+                val versionName = variant.versionName ?: flutter.versionName
                 output.outputFileName = "BOAT_v${versionName}.apk"
             }
         }
