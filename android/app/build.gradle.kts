@@ -32,6 +32,16 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            // Ensure we are only renaming the APK file
+            if (output.outputFileName != null && output.outputFileName.endsWith('.apk')) {
+                // flutterVersionName is defined at the top of this gradle file by default in Flutter
+                output.outputFileName = "BOAT_v${flutterVersionName}.apk" 
+            }
+        }
+    }
 }
 
 flutter {

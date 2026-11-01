@@ -1,5 +1,7 @@
 # boat_mobile
 
+[![Downloads](https://img.shields.io/github/downloads/svm168/BOAT_flutter_application/total.svg?style=for-the-badge&color=blue)](https://github.com/svm168/BOAT_flutter_application/releases)
+
 A new Flutter project.
 
 ## Getting Started
