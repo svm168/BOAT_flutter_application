@@ -15,8 +15,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     defaultConfig {
@@ -33,12 +35,14 @@ android {
         }
     }
 
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            // Ensure we are only renaming the APK file
-            if (output.outputFileName != null && output.outputFileName.endsWith('.apk')) {
-                // flutterVersionName is defined at the top of this gradle file by default in Flutter
-                output.outputFileName = "BOAT_v${flutterVersionName}.apk" 
+    applicationVariants.all {
+        outputs.all {
+            // Kotlin DSL requires explicit casting to access outputFileName
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            if (output.outputFileName.endsWith(".apk")) {
+                // Safely read the version from Flutter's local properties
+                val versionName = localProperties.getProperty("flutter.versionName") ?: "1.0.0"
+                output.outputFileName = "BOAT_v${versionName}.apk"
             }
         }
     }
