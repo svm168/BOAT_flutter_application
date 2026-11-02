@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:dio/dio.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/campus_config.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/utils/time_utils.dart';
 import '../../bikes/models/location_report.dart';
 
 class CampusMapWidget extends StatefulWidget {
@@ -32,6 +35,7 @@ class CampusMapWidgetState extends State<CampusMapWidget> {
   final Dio _dio = Dio();
 
   LatLng? _deviceLocation;
+  StreamSubscription<Position>? _positionSub;
   List<LatLng> _routePoints = [];
   bool _isLoadingRoute = false;
   double? _routeDistanceM;
@@ -41,11 +45,41 @@ class CampusMapWidgetState extends State<CampusMapWidget> {
   @override
   void initState() {
     super.initState();
+    _startLiveLocation();
     if (widget.lastLocation != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         fetchShortestPath();
       });
     }
+  }
+
+  void _startLiveLocation() async {
+    final hasPerm = await LocationService.checkAndRequestPermission();
+    if (!hasPerm || !mounted) return;
+
+    final initial = await LocationService.getCurrentLocation();
+    if (initial != null && mounted) {
+      setState(() {
+        _deviceLocation = LatLng(initial.latitude, initial.longitude);
+      });
+    }
+
+    _positionSub = LocationService.getPositionStream().listen((pos) {
+      if (mounted) {
+        setState(() {
+          _deviceLocation = LatLng(pos.latitude, pos.longitude);
+          if (_routePoints.isNotEmpty) {
+            _routePoints[0] = _deviceLocation!;
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    super.dispose();
   }
 
   void recenter() {
@@ -66,18 +100,23 @@ class CampusMapWidgetState extends State<CampusMapWidget> {
     });
 
     try {
-      final pos = await LocationService.getCurrentLocation();
-      if (pos == null) {
-        if (mounted) {
-          setState(() {
-            _isLoadingRoute = false;
-            _routeError = 'GPS permission needed';
-          });
+      LatLng devLoc;
+      if (_deviceLocation != null) {
+        devLoc = _deviceLocation!;
+      } else {
+        final pos = await LocationService.getCurrentLocation();
+        if (pos == null) {
+          if (mounted) {
+            setState(() {
+              _isLoadingRoute = false;
+              _routeError = 'GPS permission needed';
+            });
+          }
+          return;
         }
-        return;
+        devLoc = LatLng(pos.latitude, pos.longitude);
       }
 
-      final devLoc = LatLng(pos.latitude, pos.longitude);
       final bikeLoc = LatLng(widget.lastLocation!.lat, widget.lastLocation!.lng);
 
       // OpenStreetMap OSRM routing API for shortest road path
@@ -492,7 +531,7 @@ class CampusMapWidgetState extends State<CampusMapWidget> {
             ],
             const SizedBox(height: 8),
             Text(
-              'Recorded: ${loc.recordedAt.toLocal().toString().split('.')[0]}',
+              'Recorded: ${TimeUtils.formatIst(loc.recordedAt, pattern: 'MMM d, yyyy h:mm:ss a')}',
               style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
             ),
           ],

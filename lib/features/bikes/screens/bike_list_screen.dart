@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../scanner/providers/mesh_provider.dart';
 import '../providers/bike_provider.dart';
@@ -324,7 +324,7 @@ class _BikeListScreenState extends State<BikeListScreen> {
                                 Expanded(
                                   child: Text(
                                     bike.lastLocation != null
-                                        ? 'Last seen: ${DateFormat('MMM d, h:mm a').format(bike.lastLocation!.recordedAt)} (${bike.lastLocation!.source.toUpperCase()})'
+                                        ? 'Last seen: ${TimeUtils.formatIst(bike.lastLocation!.recordedAt)} (${bike.lastLocation!.source.toUpperCase()})'
                                         : 'No sightings yet',
                                     style: TextStyle(
                                       fontSize: 12,

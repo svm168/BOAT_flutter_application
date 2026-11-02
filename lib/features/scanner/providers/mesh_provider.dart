@@ -19,6 +19,7 @@ class MeshProvider extends ChangeNotifier {
   List<BleScanResultModel> _recentScans = [];
   bool _filterBoatOnly = false;
   StreamSubscription<BleScanResultModel>? _scanSubscription;
+  Timer? _expiryTimer;
 
   bool get isMeshActive => _isMeshActive;
   bool get isLoading => _isLoading;
@@ -46,18 +47,55 @@ class MeshProvider extends ChangeNotifier {
     // Verify actual service state on Android
     if (_isAndroid) {
       final running = await BeaconScannerService.isScanning();
-      _isMeshActive = running;
-      await refreshScans();
-      _startScanStreamListener();
+      final btOn = await BeaconScannerService.isBluetoothEnabled();
+      _isMeshActive = running && btOn;
+      if (_isMeshActive) {
+        await refreshScans();
+        _startScanStreamListener();
+      } else {
+        await BeaconScannerService.clearScans();
+        _recentScans.clear();
+      }
     }
     notifyListeners();
+  }
+
+  void _startExpiryTimer() {
+    _expiryTimer?.cancel();
+    _expiryTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!_isMeshActive) {
+        if (_recentScans.isNotEmpty) {
+          _recentScans.clear();
+          notifyListeners();
+        }
+        _expiryTimer?.cancel();
+        return;
+      }
+
+      if (_isAndroid) {
+        final isBtOn = await BeaconScannerService.isBluetoothEnabled();
+        if (!isBtOn) {
+          await toggleMeshScanner(false);
+          return;
+        }
+      }
+
+      final now = DateTime.now();
+      final beforeCount = _recentScans.length;
+      _recentScans.removeWhere((item) => now.difference(item.timestamp).inSeconds > 7);
+      if (_recentScans.length != beforeCount) {
+        notifyListeners();
+      }
+    });
   }
 
   void _startScanStreamListener() {
     _scanSubscription?.cancel();
     if (!_isAndroid) return;
+    _startExpiryTimer();
     try {
       _scanSubscription = BeaconScannerService.scanStream.listen((item) {
+        if (!_isMeshActive) return;
         final index = _recentScans.indexWhere((s) => s.deviceAddress == item.deviceAddress);
         if (index >= 0) {
           _recentScans[index] = item;
@@ -170,8 +208,11 @@ class MeshProvider extends ChangeNotifier {
       } else {
         await BeaconScannerService.stopScanning();
         _scanSubscription?.cancel();
+        _expiryTimer?.cancel();
         _isMeshActive = false;
         await _storage.setMeshScannerActive(false);
+        _recentScans.clear();
+        await BeaconScannerService.clearScans();
         _statusMessage = 'BOAT Mesh Scanner stopped.';
       }
     } catch (e) {
@@ -227,6 +268,7 @@ class MeshProvider extends ChangeNotifier {
   @override
   void dispose() {
     _scanSubscription?.cancel();
+    _expiryTimer?.cancel();
     super.dispose();
   }
 }

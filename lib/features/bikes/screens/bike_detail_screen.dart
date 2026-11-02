@@ -1,13 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/nfc_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/utils/time_utils.dart';
 import '../../map/widgets/campus_map_widget.dart';
 import '../../scanner/providers/mesh_provider.dart';
 import '../models/bike.dart';
+import '../models/location_report.dart';
 import '../providers/bike_provider.dart';
 import '../widgets/status_badge.dart';
 
@@ -23,6 +25,7 @@ class BikeDetailScreen extends StatefulWidget {
 class _BikeDetailScreenState extends State<BikeDetailScreen> {
   final GlobalKey<CampusMapWidgetState> _mapKey = GlobalKey<CampusMapWidgetState>();
   final TextEditingController _missingNotesController = TextEditingController();
+  Timer? _pollingTimer;
   bool _isReportingGps = false;
   String? _nfcWriteStatus;
 
@@ -32,10 +35,16 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BikeProvider>().fetchBikeDetail(widget.bikeId);
     });
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) {
+        context.read<BikeProvider>().fetchBikeDetail(widget.bikeId, silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _pollingTimer?.cancel();
     _missingNotesController.dispose();
     super.dispose();
   }
@@ -279,6 +288,13 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
       return isMatch && isRecent;
     });
 
+    final recentSightings = (bike.trail != null)
+        ? (List<LocationReport>.from(bike.trail!)
+            ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt)))
+            .take(5)
+            .toList()
+        : <LocationReport>[];
+
     final details = [bike.color, bike.model].where((s) => s != null && s.isNotEmpty).join(' · ');
 
     return Scaffold(
@@ -499,13 +515,13 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         Text(
-                          '${((bike.trail?.take(5).length) ?? 0)} recent sightings',
+                          '${recentSightings.length} recent sighting${recentSightings.length == 1 ? "" : "s"}',
                           style: const TextStyle(fontSize: 12, color: AppColors.inkLight),
                         ),
                       ],
                     ),
                     const Divider(height: 24),
-                    if (bike.trail == null || bike.trail!.isEmpty)
+                    if (recentSightings.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12.0),
                         child: Text(
@@ -517,10 +533,10 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: bike.trail!.take(5).length,
+                        itemCount: recentSightings.length,
                         separatorBuilder: (ctx, i) => const Divider(height: 16),
                         itemBuilder: (ctx, idx) {
-                          final loc = bike.trail![idx];
+                          final loc = recentSightings[idx];
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -573,7 +589,7 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    DateFormat('MMM d, h:mm a').format(loc.recordedAt),
+                                    TimeUtils.formatIst(loc.recordedAt),
                                     style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
                                   ),
                                 ],

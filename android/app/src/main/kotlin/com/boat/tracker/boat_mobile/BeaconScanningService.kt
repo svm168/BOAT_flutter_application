@@ -52,6 +52,7 @@ class BeaconScanningService : Service() {
                 } else if (state == BluetoothAdapter.STATE_OFF) {
                     Log.i(TAG, "Bluetooth turned OFF, stopping BLE scan...")
                     stopBleScan()
+                    BleScanManager.clearScans()
                 }
             }
         }
@@ -160,6 +161,7 @@ class BeaconScanningService : Service() {
             Log.e(TAG, "Error stopping BLE scan: ${e.message}")
         } finally {
             isScanningActive = false
+            BleScanManager.clearScans()
         }
     }
 
@@ -293,35 +295,34 @@ class BeaconScanningService : Service() {
     private fun dispatchFix(bikeId: String, rawHex: String, deviceAddress: String) {
         val fusedClient = LocationServices.getFusedLocationProviderClient(this)
         try {
-            fusedClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    sendLocationReport(bikeId, rawHex, deviceAddress, location.latitude, location.longitude, location.accuracy)
-                } else {
-                    // Fallback to active current location fix
-                    try {
-                        val cts = CancellationTokenSource()
-                        fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
-                            .addOnSuccessListener { currLocation ->
-                                if (currLocation != null) {
-                                    sendLocationReport(bikeId, rawHex, deviceAddress, currLocation.latitude, currLocation.longitude, currLocation.accuracy)
-                                } else {
-                                    Log.w(TAG, "Current location is null, using campus fallback coordinates")
-                                    sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
-                                }
+            val cts = CancellationTokenSource()
+            fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                .addOnSuccessListener { currLocation ->
+                    if (currLocation != null) {
+                        sendLocationReport(bikeId, rawHex, deviceAddress, currLocation.latitude, currLocation.longitude, currLocation.accuracy)
+                    } else {
+                        fusedClient.lastLocation.addOnSuccessListener { fallbackLocation ->
+                            if (fallbackLocation != null) {
+                                sendLocationReport(bikeId, rawHex, deviceAddress, fallbackLocation.latitude, fallbackLocation.longitude, fallbackLocation.accuracy)
+                            } else {
+                                sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
                             }
-                            .addOnFailureListener { e ->
-                                Log.e(TAG, "Failed to get current location: ${e.message}")
-                                BleScanManager.updateStatus(deviceAddress, "GPS fix failed: ${e.message}")
-                            }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Exception requesting current location: ${e.message}")
-                        BleScanManager.updateStatus(deviceAddress, "GPS error: ${e.message}")
+                        }.addOnFailureListener {
+                            sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
+                        }
                     }
                 }
-            }.addOnFailureListener { e ->
-                Log.e(TAG, "Failed to get last location: ${e.message}")
-                BleScanManager.updateStatus(deviceAddress, "GPS error: ${e.message}")
-            }
+                .addOnFailureListener {
+                    fusedClient.lastLocation.addOnSuccessListener { fallbackLocation ->
+                        if (fallbackLocation != null) {
+                            sendLocationReport(bikeId, rawHex, deviceAddress, fallbackLocation.latitude, fallbackLocation.longitude, fallbackLocation.accuracy)
+                        } else {
+                            sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
+                        }
+                    }.addOnFailureListener {
+                        sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
+                    }
+                }
         } catch (e: SecurityException) {
             Log.e(TAG, "Location permission missing: ${e.message}")
             BleScanManager.updateStatus(deviceAddress, "Location permission missing")
@@ -387,6 +388,7 @@ class BeaconScanningService : Service() {
             unregisterReceiver(bluetoothReceiver)
         } catch (_: Exception) {}
         stopBleScan()
+        BleScanManager.clearScans()
         super.onDestroy()
     }
 

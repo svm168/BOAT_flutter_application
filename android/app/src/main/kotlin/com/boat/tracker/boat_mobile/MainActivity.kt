@@ -60,6 +60,7 @@ class MainActivity: FlutterActivity() {
                 "stopScanning" -> {
                     val intent = Intent(this, BeaconScanningService::class.java)
                     stopService(intent)
+                    BleScanManager.clearScans()
                     result.success(true)
                 }
                 "isScanning" -> {

@@ -61,6 +61,8 @@ object BleScanManager {
     }
 
     fun getRecentScans(): List<Map<String, Any?>> {
+        val now = System.currentTimeMillis()
+        scanMap.entries.removeIf { now - it.value.timestamp > 7000L }
         return scanMap.values
             .sortedByDescending { it.timestamp }
             .take(60)

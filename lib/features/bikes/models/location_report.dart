@@ -32,9 +32,19 @@ class LocationReport {
           : (json['accuracyM'] != null ? (json['accuracyM'] as num).toDouble() : null),
       source: json['source'] ?? 'ble',
       reporterNote: json['reporter_note'] ?? json['note'],
-      recordedAt: json['recorded_at'] != null
-          ? DateTime.parse(json['recorded_at'])
-          : (json['recordedAt'] != null ? DateTime.parse(json['recordedAt']) : DateTime.now()),
+      recordedAt: _parseUtc(json['recorded_at'] ?? json['recordedAt']),
     );
+  }
+
+  static DateTime _parseUtc(dynamic val) {
+    if (val == null) return DateTime.now().toUtc();
+    if (val is DateTime) return val.toUtc();
+    final str = val.toString().trim();
+    if (str.isEmpty) return DateTime.now().toUtc();
+    if (str.endsWith('Z')) {
+      return DateTime.tryParse(str)?.toUtc() ?? DateTime.now().toUtc();
+    }
+    final formatted = str.contains('T') ? '${str}Z' : '${str.replaceFirst(' ', 'T')}Z';
+    return DateTime.tryParse(formatted)?.toUtc() ?? DateTime.tryParse(str)?.toUtc() ?? DateTime.now().toUtc();
   }
 }

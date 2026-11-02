@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/beacon_scanner_service.dart';
@@ -332,7 +331,6 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
   }
 
   Widget _buildDeviceScanCard(BleScanResultModel item) {
-    final timeStr = DateFormat('HH:mm:ss').format(item.timestamp);
     final isUploadingThis = _uploadingBikeId == item.bikeId;
 
     return Container(
@@ -380,7 +378,7 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Text(
-                        'BOAT BIKE',
+                        'BIKE',
                         style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -412,16 +410,7 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
             ],
           ),
 
-          const SizedBox(height: 6),
-
-          // MAC Address
-          Text(
-            'MAC: ${item.deviceAddress}',
-            style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.inkLight),
-          ),
-
-          // Raw Hex and Decoded Bike ID
-          if (item.rawHex.isNotEmpty || item.bikeId.isNotEmpty) ...[
+          if (item.bikeId.isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
@@ -430,45 +419,28 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                 color: Colors.black.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  if (item.rawHex.isNotEmpty)
-                    Text(
-                      'Hex: 0x${item.rawHex}',
+                  const Text(
+                    'Bike ID: ',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.moss),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.leaf.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      item.bikeId,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
                         fontFamily: 'monospace',
-                        color: Colors.black87,
+                        color: AppColors.moss,
                       ),
                     ),
-                  if (item.bikeId.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Text(
-                          'Decoded Bike ID: ',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.moss),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: AppColors.leaf.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            item.bikeId,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                              color: AppColors.moss,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -478,34 +450,22 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
 
           // Upload Status & Cooldown Timer
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      _statusIcon(item.uploadStatus),
-                      size: 14,
-                      color: _statusColor(item.uploadStatus),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item.isBoat ? item.uploadStatus : 'Non-BOAT (ignored)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _statusColor(item.uploadStatus),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              Icon(
+                _statusIcon(item.uploadStatus),
+                size: 14,
+                color: _statusColor(item.uploadStatus),
               ),
-              const SizedBox(width: 8),
-              Text(
-                timeStr,
-                style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  item.isBoat ? item.uploadStatus : 'Non-BOAT (ignored)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _statusColor(item.uploadStatus),
+                  ),
+                ),
               ),
             ],
           ),

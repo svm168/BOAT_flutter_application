@@ -32,10 +32,12 @@ class BikeProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchBikeDetail(dynamic id) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+  Future<void> fetchBikeDetail(dynamic id, {bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     try {
       final res = await _api.getBikeDetail(id);
@@ -55,9 +57,13 @@ class BikeProvider extends ChangeNotifier {
         activeMissingReport: activeMissing,
       );
     } catch (e) {
-      _errorMessage = _parseError(e);
+      if (!silent) {
+        _errorMessage = _parseError(e);
+      }
     } finally {
-      _isLoading = false;
+      if (!silent) {
+        _isLoading = false;
+      }
       notifyListeners();
     }
   }
