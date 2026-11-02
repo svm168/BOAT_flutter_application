@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/campus_config.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/services/beacon_scanner_service.dart';
-import '../../../core/services/location_service.dart';
 import '../providers/mesh_provider.dart';
 
 class MeshStatusScreen extends StatefulWidget {
@@ -16,97 +13,21 @@ class MeshStatusScreen extends StatefulWidget {
 }
 
 class _MeshStatusScreenState extends State<MeshStatusScreen> {
-  final TextEditingController _urlController = TextEditingController();
-  bool _isTestingPing = false;
-  String? _testPingResult;
-  bool _isCheckingHealth = false;
-  String? _healthResult;
+  final ScrollController _bleScrollController = ScrollController();
   String? _uploadingBikeId;
 
   @override
   void initState() {
     super.initState();
-    final mesh = context.read<MeshProvider>();
-    _urlController.text = mesh.serverUrl;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      mesh.refreshScans();
+      context.read<MeshProvider>().refreshScans();
     });
   }
 
   @override
   void dispose() {
-    _urlController.dispose();
+    _bleScrollController.dispose();
     super.dispose();
-  }
-
-  void _saveServerUrl() async {
-    final mesh = context.read<MeshProvider>();
-    await mesh.setServerUrl(_urlController.text);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Server endpoint saved successfully!'),
-        backgroundColor: AppColors.moss,
-      ),
-    );
-  }
-
-  void _testServerHealth() async {
-    setState(() {
-      _isCheckingHealth = true;
-      _healthResult = null;
-    });
-
-    try {
-      final testUrl = _urlController.text.trim();
-      final cleanUrl = testUrl.endsWith('/') ? testUrl.substring(0, testUrl.length - 1) : testUrl;
-      ApiClient().updateBaseUrl(cleanUrl);
-      final res = await ApiClient().checkHealth();
-      setState(() {
-        _isCheckingHealth = false;
-        _healthResult = res['ok'] == true
-            ? 'Connected to Backend! Database: ${res['database'] ?? "Online"}'
-            : 'Server response: $res';
-      });
-    } catch (e) {
-      setState(() {
-        _isCheckingHealth = false;
-        _healthResult = 'Health check failed: $e';
-      });
-    }
-  }
-
-  void _testMeshIngestion() async {
-    setState(() {
-      _isTestingPing = true;
-      _testPingResult = null;
-    });
-
-    try {
-      final pos = await LocationService.getCurrentLocation();
-      final lat = pos?.latitude ?? CampusConfig.defaultLat;
-      final lng = pos?.longitude ?? CampusConfig.defaultLng;
-
-      final res = await ApiClient().reportLocation(
-        publicId: 'FR6C7VTH',
-        tagId: 'TAG-FR6C7VTH',
-        lat: lat,
-        lng: lng,
-        accuracyM: 5.0,
-        source: 'ble',
-        note: 'Diagnostics test ping from mobile app',
-      );
-
-      setState(() {
-        _isTestingPing = false;
-        _testPingResult = 'Check-in accepted! Response: $res';
-      });
-    } catch (e) {
-      setState(() {
-        _isTestingPing = false;
-        _testPingResult = 'Ping failed: $e';
-      });
-    }
   }
 
   void _uploadManualFix(String bikeId) async {
@@ -141,13 +62,6 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mesh Diagnostics'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh BLE scans',
-            onPressed: () => mesh.refreshScans(),
-          ),
-        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -237,147 +151,6 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
             // --- NEARBY BLE SCANS SECTION ---
             _buildNearbyBleSection(mesh),
 
-            const SizedBox(height: 24),
-
-            // Server URL Configuration
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Backend Server Configuration',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Endpoints used for REST requests and background BLE location fixes.',
-                      style: TextStyle(fontSize: 12, color: AppColors.inkLight),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _urlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Server Base URL',
-                        hintText: 'http://10.0.2.2:3000',
-                        prefixIcon: Icon(Icons.dns_outlined, color: AppColors.leaf),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _saveServerUrl,
-                            child: const Text('Save Base URL'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          onPressed: _isCheckingHealth ? null : _testServerHealth,
-                          icon: _isCheckingHealth
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.network_check_rounded, size: 16),
-                          label: const Text('Test Connection'),
-                        ),
-                      ],
-                    ),
-                    if (_healthResult != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: _healthResult!.startsWith('Connected')
-                              ? AppColors.leaf.withValues(alpha: 0.15)
-                              : AppColors.clay.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _healthResult!.startsWith('Connected')
-                                ? AppColors.leaf
-                                : AppColors.clay,
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Text(
-                          _healthResult!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _healthResult!.startsWith('Connected')
-                                ? AppColors.moss
-                                : AppColors.clay,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Architectural Rules & Telemetry
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Specifications & Safeguards',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const Divider(height: 24),
-                    _buildSpecRow(
-                      'Client-Side Cooldown',
-                      '5 minutes (300,000 ms) in-memory cache per tag ID to prevent battery drain & server spam.',
-                    ),
-                    _buildSpecRow(
-                      'Hardware BLE Beacon ID',
-                      'Name: "BOAT" | Company: 0xFFFF | Decodes ASCII Bike ID (e.g. FR6C7VTH).',
-                      isMono: true,
-                    ),
-                    _buildSpecRow(
-                      'Ingestion Endpoint',
-                      'POST /api/location (Community mesh ingestion: records GPS fix directly to database).',
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _isTestingPing ? null : _testMeshIngestion,
-                      icon: _isTestingPing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send_rounded, size: 18),
-                      label: const Text('Send Test Location Sighting'),
-                    ),
-                    if (_testPingResult != null) ...[
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.sand,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _testPingResult!,
-                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
             const SizedBox(height: 40),
           ],
         ),
@@ -433,26 +206,17 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded, size: 20),
-                      tooltip: 'Refresh scans',
-                      onPressed: () => mesh.refreshScans(),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                      tooltip: 'Clear list',
-                      onPressed: scans.isEmpty ? null : () => mesh.clearScans(),
-                    ),
-                  ],
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  tooltip: 'Clear list',
+                  onPressed: scans.isEmpty ? null : () => mesh.clearScans(),
                 ),
               ],
             ),
 
             const SizedBox(height: 12),
 
-            // Filter Chips & Status Indicator
+            // Filter Chips
             Row(
               children: [
                 FilterChip(
@@ -473,31 +237,33 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                   selectedColor: AppColors.leaf.withValues(alpha: 0.25),
                   checkmarkColor: AppColors.moss,
                 ),
-                const Spacer(),
-                if (mesh.isMeshActive)
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.leaf,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'Scanning...',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.moss,
-                        ),
-                      ),
-                    ],
-                  ),
               ],
             ),
+
+            if (mesh.isMeshActive) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.leaf,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Scanning...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.moss,
+                    ),
+                  ),
+                ],
+              ),
+            ],
 
             const Divider(height: 24),
 
@@ -539,15 +305,24 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                 ),
               ),
             ] else ...[
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: scans.length,
-                separatorBuilder: (ctx, i) => const SizedBox(height: 12),
-                itemBuilder: (ctx, index) {
-                  final item = scans[index];
-                  return _buildDeviceScanCard(item);
-                },
+              SizedBox(
+                height: 380,
+                child: Scrollbar(
+                  controller: _bleScrollController,
+                  thumbVisibility: true,
+                  radius: const Radius.circular(8),
+                  thickness: 4,
+                  child: ListView.separated(
+                    controller: _bleScrollController,
+                    padding: const EdgeInsets.only(right: 8),
+                    itemCount: scans.length,
+                    separatorBuilder: (ctx, i) => const SizedBox(height: 12),
+                    itemBuilder: (ctx, index) {
+                      final item = scans[index];
+                      return _buildDeviceScanCard(item);
+                    },
+                  ),
+                ),
               ),
             ],
           ],
@@ -701,7 +476,7 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
 
           const SizedBox(height: 8),
 
-          // Upload Status & Actions
+          // Upload Status & Cooldown Timer
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -713,14 +488,12 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                       size: 14,
                       color: _statusColor(item.uploadStatus),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         item.isBoat ? item.uploadStatus : 'Non-BOAT (ignored)',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: _statusColor(item.uploadStatus),
                         ),
@@ -729,17 +502,23 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
                 timeStr,
                 style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
               ),
-              if (item.isBoat && item.bikeId.isNotEmpty) ...[
-                const SizedBox(width: 8),
+            ],
+          ),
+          if (item.isBoat && item.bikeId.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
                 InkWell(
                   onTap: isUploadingThis ? null : () => _uploadManualFix(item.bikeId),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: AppColors.moss,
                       borderRadius: BorderRadius.circular(8),
@@ -752,13 +531,13 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
                           )
                         : const Text(
                             'Upload Fix Now',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                   ),
                 ),
               ],
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );
@@ -790,29 +569,5 @@ class _MeshStatusScreenState extends State<MeshStatusScreen> {
       return Icons.error_outline_rounded;
     }
     return Icons.radio_button_checked_rounded;
-  }
-
-  Widget _buildSpecRow(String title, String desc, {bool isMono = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.moss),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            desc,
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: isMono ? 'monospace' : null,
-              color: AppColors.inkLight,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

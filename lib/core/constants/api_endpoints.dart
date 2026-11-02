@@ -1,15 +1,5 @@
-import 'package:flutter/foundation.dart';
-
 class ApiEndpoints {
-  // Automatically choose localhost for Web and desktop, 10.0.2.2 for Android emulator
-  static String get defaultBaseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    }
-    return defaultTargetPlatform == TargetPlatform.android
-        ? 'http://10.0.2.2:3000'
-        : 'http://localhost:3000';
-  }
+  static const String defaultBaseUrl = 'https://boat-eight-lemon.vercel.app';
 
   // Auth
   static const String login = '/api/auth/login';

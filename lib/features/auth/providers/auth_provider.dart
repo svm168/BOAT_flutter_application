@@ -41,19 +41,18 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String identifier, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final res = await _api.login(email, password);
+      final res = await _api.login(identifier, password);
       if (res['token'] != null) {
         await _storage.saveToken(res['token']);
         if (res['user'] != null) {
           _currentUser = User.fromJson(res['user']);
         }
-        _isLoading = false;
         notifyListeners();
         return true;
       } else {
@@ -74,7 +73,8 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     required String displayName,
-    String? phone,
+    required String enrollmentId,
+    required String phone,
     String? hostel,
     String? room,
   }) async {
@@ -87,6 +87,7 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
         displayName: displayName,
+        enrollmentId: enrollmentId,
         phone: phone,
         hostel: hostel,
         room: room,
@@ -96,7 +97,6 @@ class AuthProvider extends ChangeNotifier {
         if (res['user'] != null) {
           _currentUser = User.fromJson(res['user']);
         }
-        _isLoading = false;
         notifyListeners();
         return true;
       } else {
@@ -116,6 +116,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _storage.clearToken();
     _currentUser = null;
+    _isLoading = false;
     notifyListeners();
   }
 

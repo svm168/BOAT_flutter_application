@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/network/api_client.dart';
-import '../../scanner/providers/mesh_provider.dart';
 import '../providers/auth_provider.dart';
 import 'register_screen.dart';
 
@@ -18,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -27,134 +26,46 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _submit() async {
+    final auth = context.read<AuthProvider>();
+    if (_isSubmitting || auth.isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final auth = context.read<AuthProvider>();
+    setState(() {
+      _isSubmitting = true;
+    });
+
     final messenger = ScaffoldMessenger.of(context);
     final success = await auth.login(
-      _emailController.text,
+      _emailController.text.trim(),
       _passwordController.text,
     );
 
     if (!mounted) return;
 
-    if (!success && auth.errorMessage != null) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(auth.errorMessage!),
-          backgroundColor: AppColors.clay,
-        ),
-      );
-    }
-  }
-
-  void _showServerSettings() {
-    final meshProvider = context.read<MeshProvider>();
-    final controller = TextEditingController(text: meshProvider.serverUrl);
-    String? testResult;
-    bool isTesting = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Backend Server URL'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Specify the Next.js server address. For Web/Desktop use http://localhost:3000. For Android emulator use http://10.0.2.2:3000.',
-                style: TextStyle(fontSize: 13, color: AppColors.inkLight),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Server URL',
-                  prefixIcon: Icon(Icons.dns_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: isTesting ? null : () async {
-                      setDialogState(() {
-                        isTesting = true;
-                        testResult = null;
-                      });
-                      try {
-                        final testUrl = controller.text.trim();
-                        final cleanUrl = testUrl.endsWith('/') ? testUrl.substring(0, testUrl.length - 1) : testUrl;
-                        ApiClient().updateBaseUrl(cleanUrl);
-                        final res = await ApiClient().checkHealth();
-                        setDialogState(() {
-                          isTesting = false;
-                          testResult = res['ok'] == true ? 'Connected! Database: ${res['database']}' : 'Response: $res';
-                        });
-                      } catch (e) {
-                        setDialogState(() {
-                          isTesting = false;
-                          testResult = 'Connection failed: $e';
-                        });
-                      }
-                    },
-                    icon: isTesting
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.network_check_rounded, size: 16),
-                    label: const Text('Test Connection'),
-                  ),
-                ],
-              ),
-              if (testResult != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  testResult!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: testResult!.startsWith('Connected') ? AppColors.moss : AppColors.clay,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ],
+    if (!success) {
+      setState(() {
+        _isSubmitting = false;
+      });
+      if (auth.errorMessage != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(auth.errorMessage!),
+            backgroundColor: AppColors.clay,
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                ApiClient().updateBaseUrl(meshProvider.serverUrl);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await meshProvider.setServerUrl(controller.text);
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final bool isButtonLoading = auth.isLoading || _isSubmitting;
 
     return Scaffold(
       appBar: AppBar(
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppColors.moss),
-            tooltip: 'Server Settings',
-            onPressed: _showServerSettings,
-          ),
-        ],
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SafeArea(
         child: Center(
@@ -229,18 +140,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 20),
                         TextFormField(
                           controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          keyboardType: TextInputType.text,
                           decoration: const InputDecoration(
-                            labelText: 'Campus Email',
-                            hintText: 'student@iitr.ac.in',
-                            prefixIcon: Icon(Icons.email_outlined, color: AppColors.leaf),
+                            labelText: 'Email or Enrollment / ID',
+                            hintText: 'Email or Enrollment / ID',
+                            prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.leaf),
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            if (!val.contains('@')) {
-                              return 'Enter a valid email address';
+                              return 'Please enter your email or ID';
                             }
                             return null;
                           },
@@ -273,8 +181,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(
-                          onPressed: auth.isLoading ? null : _submit,
-                          child: auth.isLoading
+                          onPressed: isButtonLoading ? null : _submit,
+                          child: isButtonLoading
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,

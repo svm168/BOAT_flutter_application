@@ -31,9 +31,9 @@ class ApiClient {
   }
 
   // --- Auth APIs ---
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  Future<Map<String, dynamic>> login(String identifier, String password) async {
     final res = await dio.post(ApiEndpoints.login, data: {
-      'email': email.trim().toLowerCase(),
+      'identifier': identifier.trim(),
       'password': password,
     });
     return res.data as Map<String, dynamic>;
@@ -43,7 +43,8 @@ class ApiClient {
     required String email,
     required String password,
     required String displayName,
-    String? phone,
+    required String enrollmentId,
+    required String phone,
     String? hostel,
     String? room,
   }) async {
@@ -51,7 +52,8 @@ class ApiClient {
       'email': email.trim().toLowerCase(),
       'password': password,
       'displayName': displayName.trim(),
-      if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
+      'enrollmentId': enrollmentId.trim(),
+      'phone': phone.trim(),
       if (hostel != null && hostel.isNotEmpty) 'hostel': hostel.trim(),
       if (room != null && room.isNotEmpty) 'room': room.trim(),
     });

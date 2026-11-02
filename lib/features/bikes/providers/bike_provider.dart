@@ -111,6 +111,7 @@ class BikeProvider extends ChangeNotifier {
     required double lat,
     required double lng,
     double? accuracyM,
+    String source = 'manual',
     String? note,
   }) async {
     try {
@@ -119,7 +120,7 @@ class BikeProvider extends ChangeNotifier {
         lat: lat,
         lng: lng,
         accuracyM: accuracyM,
-        source: 'manual',
+        source: source,
         note: note,
       );
       if (_selectedBike != null && _selectedBike!.publicId == publicId) {

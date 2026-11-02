@@ -227,6 +227,8 @@ class _BikeListScreenState extends State<BikeListScreen> {
               )
             else
               ...bikeProvider.bikes.map((bike) {
+                final details = [bike.color, bike.model].where((s) => s != null && s.isNotEmpty).join(' · ');
+
                 return Card(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(24),
@@ -257,6 +259,16 @@ class _BikeListScreenState extends State<BikeListScreen> {
                                             fontSize: 20,
                                           ),
                                     ),
+                                    if (details.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        details,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.ink.withValues(alpha: 0.65),
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 4),
                                     Row(
                                       children: [
@@ -286,14 +298,6 @@ class _BikeListScreenState extends State<BikeListScreen> {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '· Minor: ${bike.beaconMinor}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.ink.withValues(alpha: 0.6),
-                                          ),
-                                        ),
                                       ],
                                     ),
                                   ],
@@ -321,7 +325,7 @@ class _BikeListScreenState extends State<BikeListScreen> {
                                   child: Text(
                                     bike.lastLocation != null
                                         ? 'Last seen: ${DateFormat('MMM d, h:mm a').format(bike.lastLocation!.recordedAt)} (${bike.lastLocation!.source.toUpperCase()})'
-                                        : 'Registered ${DateFormat('MMM d, yyyy').format(bike.createdAt)}',
+                                        : 'No sightings yet',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,

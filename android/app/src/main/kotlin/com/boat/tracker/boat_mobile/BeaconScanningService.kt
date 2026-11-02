@@ -34,9 +34,9 @@ class BeaconScanningService : Service() {
     private val httpClient = OkHttpClient()
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-    // 5-Minute Client-Side Cooldown Cache: Key is bikeId, Value is System timestamp (ms)
+    // 30-Second Client-Side Cooldown Cache: Key is bikeId, Value is System timestamp (ms)
     private val cooldownCache = ConcurrentHashMap<String, Long>()
-    private val COOLDOWN_MS = 5 * 60 * 1000L // 5 minutes
+    private val COOLDOWN_MS = 30 * 1000L
 
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bleScanner: BluetoothLeScanner? = null
@@ -306,7 +306,6 @@ class BeaconScanningService : Service() {
                                     sendLocationReport(bikeId, rawHex, deviceAddress, currLocation.latitude, currLocation.longitude, currLocation.accuracy)
                                 } else {
                                     Log.w(TAG, "Current location is null, using campus fallback coordinates")
-                                    // IIT Roorkee campus default fallback
                                     sendLocationReport(bikeId, rawHex, deviceAddress, 29.86512, 77.89645, 10.0f)
                                 }
                             }

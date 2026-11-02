@@ -6,7 +6,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/nfc_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../map/widgets/campus_map_widget.dart';
-import '../../scanner/screens/public_bike_screen.dart';
+import '../../scanner/providers/mesh_provider.dart';
 import '../models/bike.dart';
 import '../providers/bike_provider.dart';
 import '../widgets/status_badge.dart';
@@ -21,6 +21,7 @@ class BikeDetailScreen extends StatefulWidget {
 }
 
 class _BikeDetailScreenState extends State<BikeDetailScreen> {
+  final GlobalKey<CampusMapWidgetState> _mapKey = GlobalKey<CampusMapWidgetState>();
   final TextEditingController _missingNotesController = TextEditingController();
   bool _isReportingGps = false;
   String? _nfcWriteStatus;
@@ -144,11 +145,15 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
       lat: pos.latitude,
       lng: pos.longitude,
       accuracyM: pos.accuracy,
-      note: 'Owner manual check-in from BOAT mobile app',
+      source: 'ble',
+      note: 'Owner manual check-in via BLE proximity',
     );
 
     if (mounted) {
       setState(() => _isReportingGps = false);
+      if (success) {
+        _mapKey.currentState?.recenter();
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -157,32 +162,6 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                 : (bikeProvider.errorMessage ?? 'Report failed'),
           ),
           backgroundColor: success ? AppColors.moss : AppColors.clay,
-        ),
-      );
-    }
-  }
-
-  void _simulateScan(Bike bike) async {
-    final bikeProvider = context.read<BikeProvider>();
-    // Simulate sighting near Main Building / Senate at IIT Roorkee
-    const double mockLat = 29.8655;
-    const double mockLng = 77.8960;
-
-    final success = await bikeProvider.reportLocation(
-      publicId: bike.publicId,
-      lat: mockLat,
-      lng: mockLng,
-      accuracyM: 5.0,
-      note: 'Simulated Gate Checkpoint Scanner',
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success ? 'Simulated scan fix reported at IIT Roorkee!' : 'Simulation failed',
-          ),
-          backgroundColor: AppColors.moss,
         ),
       );
     }
@@ -261,6 +240,7 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final bikeProvider = context.watch<BikeProvider>();
+    final mesh = context.watch<MeshProvider>();
     final bike = bikeProvider.selectedBike;
 
     if (bikeProvider.isLoading && bike == null) {
@@ -289,7 +269,17 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
       );
     }
 
-    final nfcUrl = '${StorageService().getBaseUrl()}/bike/${bike.publicId}';
+    // Proximity check: Is this bike actively detected in the BLE mesh scans?
+    final bool isBikeInProximity = mesh.allScans.any((scan) {
+      final isMatch = scan.isBoat &&
+          (scan.bikeId.toLowerCase() == bike.publicId.toLowerCase() ||
+              scan.bikeId.toLowerCase() == bike.tagId.toLowerCase() ||
+              (bike.tagId.isNotEmpty && scan.deviceAddress.toLowerCase() == bike.tagId.toLowerCase()));
+      final isRecent = DateTime.now().difference(scan.timestamp).inSeconds < 60;
+      return isMatch && isRecent;
+    });
+
+    final details = [bike.color, bike.model].where((s) => s != null && s.isNotEmpty).join(' · ');
 
     return Scaffold(
       appBar: AppBar(
@@ -297,14 +287,20 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh',
-            onPressed: () => bikeProvider.fetchBikeDetail(bike.id),
+            tooltip: 'Refresh & Center',
+            onPressed: () async {
+              await bikeProvider.fetchBikeDetail(bike.id);
+              _mapKey.currentState?.recenter();
+            },
           ),
         ],
       ),
       body: RefreshIndicator(
         color: AppColors.moss,
-        onRefresh: () => bikeProvider.fetchBikeDetail(bike.id),
+        onRefresh: () async {
+          await bikeProvider.fetchBikeDetail(bike.id);
+          _mapKey.currentState?.recenter();
+        },
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
           children: [
@@ -323,9 +319,7 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        [bike.color, bike.model].where((s) => s != null && s.isNotEmpty).join(' · ').isNotEmpty
-                            ? [bike.color, bike.model].where((s) => s != null && s.isNotEmpty).join(' · ')
-                            : 'Campus bicycle',
+                        details.isNotEmpty ? details : 'Campus bicycle',
                         style: const TextStyle(fontSize: 14, color: AppColors.inkLight),
                       ),
                     ],
@@ -410,25 +404,24 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                 ],
               ),
               child: CampusMapWidget(
+                key: _mapKey,
                 bikeName: bike.name,
                 isMissing: bike.isMissing,
                 lastLocation: bike.lastLocation,
-                trail: bike.trail,
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // Quick Actions: Report GPS & NFC
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.moss,
+                      backgroundColor: isBikeInProximity ? AppColors.moss : Colors.grey.shade400,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _isReportingGps ? null : () => _reportCurrentGps(bike),
+                    onPressed: (isBikeInProximity && !_isReportingGps) ? () => _reportCurrentGps(bike) : null,
                     icon: _isReportingGps
                         ? const SizedBox(
                             width: 16,
@@ -438,27 +431,17 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.my_location_rounded, size: 18),
-                    label: const Text('Fix GPS Here', style: TextStyle(fontSize: 13)),
+                        : Icon(
+                            isBikeInProximity ? Icons.my_location_rounded : Icons.location_disabled_rounded,
+                            size: 18,
+                          ),
+                    label: Text(
+                      isBikeInProximity ? 'Fix GPS Here' : 'Fix GPS (Out of Range)',
+                      style: const TextStyle(fontSize: 13),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () => _simulateScan(bike),
-                    icon: const Icon(Icons.sensors_rounded, size: 18),
-                    label: const Text('Simulate Scan', style: TextStyle(fontSize: 13)),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-            Row(
-              children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
@@ -469,23 +452,15 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                     label: const Text('Write NFC Plate', style: TextStyle(fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PublicBikeScreen(publicId: bike.publicId),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('Public Plate →', style: TextStyle(fontSize: 13)),
-                  ),
-                ),
               ],
             ),
+            if (!isBikeInProximity) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'Bike BLE beacon must be actively scanned nearby to fix GPS.',
+                style: TextStyle(fontSize: 11, color: AppColors.inkLight),
+              ),
+            ],
 
             const SizedBox(height: 24),
 
@@ -501,16 +476,8 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const Divider(height: 24),
-                    _buildInfoRow('Bicycle Tag (RFID / BLE)', bike.tagId.isNotEmpty ? bike.tagId : 'Unassigned', isMono: true),
-                    _buildInfoRow('NFC URL', nfcUrl),
+                    _buildInfoRow('Bicycle Tag', bike.tagId.isNotEmpty ? bike.tagId : 'Unassigned', isMono: true),
                     _buildInfoRow('iBeacon UUID', bike.beaconUuid, isMono: true),
-                    _buildInfoRow('Major / Minor', '${bike.beaconMajor} / ${bike.beaconMinor}', isMono: true),
-                    _buildInfoRow(
-                      'Latest Fix',
-                      bike.lastLocation != null
-                          ? '${bike.lastLocation!.lat.toStringAsFixed(5)}, ${bike.lastLocation!.lng.toStringAsFixed(5)} · ${DateFormat('h:mm a').format(bike.lastLocation!.recordedAt)} (${bike.lastLocation!.source.toUpperCase()})'
-                          : 'No sightings yet (Campus center active)',
-                    ),
                   ],
                 ),
               ),
@@ -518,7 +485,6 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
 
             const SizedBox(height: 20),
 
-            // Historical Breadcrumb Trail Section
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -529,11 +495,11 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Historical Breadcrumbs',
+                          'Sightings',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         Text(
-                          '${bike.trail?.length ?? 0} sightings',
+                          '${((bike.trail?.take(5).length) ?? 0)} recent sightings',
                           style: const TextStyle(fontSize: 12, color: AppColors.inkLight),
                         ),
                       ],
@@ -543,7 +509,7 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12.0),
                         child: Text(
-                          'No historical pings recorded yet. As community members walk past with the app running, sightings will appear here.',
+                          'No sightings recorded yet.',
                           style: TextStyle(color: AppColors.inkLight, fontSize: 13),
                         ),
                       )
@@ -551,7 +517,7 @@ class _BikeDetailScreenState extends State<BikeDetailScreen> {
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: bike.trail!.length,
+                        itemCount: bike.trail!.take(5).length,
                         separatorBuilder: (ctx, i) => const Divider(height: 16),
                         itemBuilder: (ctx, idx) {
                           final loc = bike.trail![idx];

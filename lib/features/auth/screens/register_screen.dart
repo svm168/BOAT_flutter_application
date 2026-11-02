@@ -13,16 +13,19 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _displayNameController = TextEditingController();
+  final _enrollmentController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   final _hostelController = TextEditingController();
   final _roomController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
     _displayNameController.dispose();
+    _enrollmentController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _phoneController.dispose();
@@ -32,35 +35,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _submit() async {
+    final auth = context.read<AuthProvider>();
+    if (_isSubmitting || auth.isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final auth = context.read<AuthProvider>();
+    setState(() {
+      _isSubmitting = true;
+    });
+
     final success = await auth.register(
-      email: _emailController.text,
+      email: _emailController.text.trim(),
       password: _passwordController.text,
-      displayName: _displayNameController.text,
-      phone: _phoneController.text,
-      hostel: _hostelController.text,
-      room: _roomController.text,
+      displayName: _displayNameController.text.trim(),
+      enrollmentId: _enrollmentController.text.trim(),
+      phone: _phoneController.text.trim(),
+      hostel: _hostelController.text.trim(),
+      room: _roomController.text.trim(),
     );
 
     if (!mounted) return;
 
     if (success) {
       Navigator.pop(context); // Pops back to root, which will show MainNavigationScreen
-    } else if (auth.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.errorMessage!),
-          backgroundColor: AppColors.clay,
-        ),
-      );
+    } else {
+      setState(() {
+        _isSubmitting = false;
+      });
+      if (auth.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(auth.errorMessage!),
+            backgroundColor: AppColors.clay,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final bool isButtonLoading = auth.isLoading || _isSubmitting;
 
     return Scaffold(
       appBar: AppBar(
@@ -105,11 +120,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         controller: _displayNameController,
                         decoration: const InputDecoration(
                           labelText: 'Full Name *',
-                          hintText: 'Aarav Sharma',
+                          hintText: 'FirstName LastName',
                           prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.leaf),
                         ),
                         validator: (val) =>
                             (val == null || val.trim().isEmpty) ? 'Please enter your name' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _enrollmentController,
+                        decoration: const InputDecoration(
+                          labelText: 'Enrollemnt no *',
+                          hintText: 'Enrollment / ID',
+                          prefixIcon: Icon(Icons.badge_outlined, color: AppColors.leaf),
+                        ),
+                        validator: (val) =>
+                            (val == null || val.trim().isEmpty) ? 'Please enter your enrollment / ID' : null,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -122,7 +148,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return 'Please enter your email';
-                          if (!val.contains('@')) return 'Enter a valid email';
+                          final email = val.trim().toLowerCase();
+                          final regex = RegExp(r'^[^\s@]+@([a-zA-Z0-9-]+\.)*iitr\.ac\.in$');
+                          if (!regex.hasMatch(email)) {
+                            return 'Email must belong to the .iitr.ac.in domain';
+                          }
                           return null;
                         },
                       ),
@@ -145,8 +175,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                         ),
-                        validator: (val) => (val == null || val.length < 6)
-                            ? 'Password must be at least 6 characters'
+                        validator: (val) => (val == null || val.length < 8)
+                            ? 'Password must be at least 8 characters'
                             : null,
                       ),
                       const SizedBox(height: 16),
@@ -154,10 +184,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         controller: _phoneController,
                         keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(
-                          labelText: 'Phone Number (Optional)',
-                          hintText: '+91 9876543210',
+                          labelText: 'Phone Number *',
+                          hintText: '9876543210',
                           prefixIcon: Icon(Icons.phone_outlined, color: AppColors.leaf),
                         ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please enter your phone number';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -187,8 +223,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(height: 28),
                       ElevatedButton(
-                        onPressed: auth.isLoading ? null : _submit,
-                        child: auth.isLoading
+                        onPressed: isButtonLoading ? null : _submit,
+                        child: isButtonLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,

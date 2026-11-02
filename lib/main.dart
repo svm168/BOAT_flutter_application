@@ -44,7 +44,7 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    if (!auth.initialized || (auth.isLoading && auth.currentUser == null)) {
+    if (!auth.initialized) {
       return Scaffold(
         body: Center(
           child: Column(

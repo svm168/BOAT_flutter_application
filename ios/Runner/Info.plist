@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Boat Mobile</string>
+	<string>BOAT</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -45,5 +45,39 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- Location Permissions -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>BOAT requires location access to find bicycle proximity, record GPS tags, and provide shortest road path directions.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>BOAT requires background location access to automatically relay bicycle locations to the community mesh.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>BOAT requires location access to track bicycle coordinates.</string>
+
+	<!-- Bluetooth Permissions -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>BOAT uses Bluetooth Low Energy to scan for nearby bicycle iBeacons.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>BOAT uses Bluetooth to detect campus bicycle beacons.</string>
+
+	<!-- NFC Permissions -->
+	<key>NFCReaderUsageDescription</key>
+	<string>BOAT uses NFC to scan and program bicycle identification plates.</string>
+	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
+	<array>
+		<string>D2760000850101</string>
+	</array>
+	<key>com.apple.developer.nfc.readersession.felica.system-codes</key>
+	<array>
+		<string>12FC</string>
+	</array>
+
+	<!-- Background Modes -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>bluetooth-central</string>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>

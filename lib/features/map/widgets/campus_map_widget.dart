@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:dio/dio.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/campus_config.dart';
+import '../../../core/services/location_service.dart';
 import '../../bikes/models/location_report.dart';
 
 class CampusMapWidget extends StatefulWidget {
@@ -22,11 +24,116 @@ class CampusMapWidget extends StatefulWidget {
   });
 
   @override
-  State<CampusMapWidget> createState() => _CampusMapWidgetState();
+  State<CampusMapWidget> createState() => CampusMapWidgetState();
 }
 
-class _CampusMapWidgetState extends State<CampusMapWidget> {
+class CampusMapWidgetState extends State<CampusMapWidget> {
   final MapController _mapController = MapController();
+  final Dio _dio = Dio();
+
+  LatLng? _deviceLocation;
+  List<LatLng> _routePoints = [];
+  bool _isLoadingRoute = false;
+  double? _routeDistanceM;
+  double? _routeDurationS;
+  String? _routeError;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.lastLocation != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        fetchShortestPath();
+      });
+    }
+  }
+
+  void recenter() {
+    final target = widget.lastLocation != null
+        ? LatLng(widget.lastLocation!.lat, widget.lastLocation!.lng)
+        : LatLng(
+            widget.center?.latitude ?? CampusConfig.defaultLat,
+            widget.center?.longitude ?? CampusConfig.defaultLng,
+          );
+    _mapController.move(target, 16.5);
+  }
+
+  Future<void> fetchShortestPath() async {
+    if (widget.lastLocation == null) return;
+    setState(() {
+      _isLoadingRoute = true;
+      _routeError = null;
+    });
+
+    try {
+      final pos = await LocationService.getCurrentLocation();
+      if (pos == null) {
+        if (mounted) {
+          setState(() {
+            _isLoadingRoute = false;
+            _routeError = 'GPS permission needed';
+          });
+        }
+        return;
+      }
+
+      final devLoc = LatLng(pos.latitude, pos.longitude);
+      final bikeLoc = LatLng(widget.lastLocation!.lat, widget.lastLocation!.lng);
+
+      // OpenStreetMap OSRM routing API for shortest road path
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/${devLoc.longitude},${devLoc.latitude};${bikeLoc.longitude},${bikeLoc.latitude}?overview=full&geometries=geojson';
+
+      final res = await _dio.get(url);
+      if (res.statusCode == 200 &&
+          res.data['routes'] != null &&
+          (res.data['routes'] as List).isNotEmpty) {
+        final route = res.data['routes'][0];
+        final coords = (route['geometry']['coordinates'] as List)
+            .map((pt) => LatLng((pt[1] as num).toDouble(), (pt[0] as num).toDouble()))
+            .toList();
+
+        final dist = (route['distance'] as num?)?.toDouble() ?? 0.0;
+        // Pedestrian walking speed ~5 km/h (1.39 m/s or 83.3 m/min)
+        final walkingDurationS = dist > 0 ? (dist / 1.39) : 60.0;
+
+        if (mounted) {
+          setState(() {
+            _deviceLocation = devLoc;
+            _routePoints = coords;
+            _routeDistanceM = dist;
+            _routeDurationS = walkingDurationS;
+            _isLoadingRoute = false;
+          });
+
+          if (coords.isNotEmpty) {
+            final bounds = LatLngBounds.fromPoints([devLoc, bikeLoc, ...coords]);
+            _mapController.fitCamera(
+              CameraFit.bounds(
+                bounds: bounds,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 50),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _deviceLocation = devLoc;
+            _routePoints = [devLoc, bikeLoc];
+            _isLoadingRoute = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingRoute = false;
+          _routeError = 'Route unavailable';
+        });
+      }
+    }
+  }
 
   @override
   void didUpdateWidget(covariant CampusMapWidget oldWidget) {
@@ -39,6 +146,7 @@ class _CampusMapWidgetState extends State<CampusMapWidget> {
         LatLng(widget.lastLocation!.lat, widget.lastLocation!.lng),
         16.5,
       );
+      fetchShortestPath();
     }
   }
 
@@ -53,17 +161,6 @@ class _CampusMapWidgetState extends State<CampusMapWidget> {
         ? LatLng(widget.lastLocation!.lat, widget.lastLocation!.lng)
         : defaultLatLng;
 
-    // Build polyline coordinates
-    final List<LatLng> polylinePoints = [];
-    if (widget.trail != null && widget.trail!.isNotEmpty) {
-      for (final p in widget.trail!) {
-        polylinePoints.add(LatLng(p.lat, p.lng));
-      }
-    }
-    if (widget.lastLocation != null && !polylinePoints.contains(currentPoint)) {
-      polylinePoints.add(currentPoint);
-    }
-
     final pinColor = widget.isMissing
         ? AppColors.clay
         : (widget.lastLocation?.source == 'mock' ? const Color(0xFFD97706) : AppColors.moss);
@@ -76,52 +173,38 @@ class _CampusMapWidgetState extends State<CampusMapWidget> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: currentPoint,
-              initialZoom: 16.0,
+              initialZoom: 16.5,
             ),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.boat.tracker.boat_mobile',
               ),
-              if (polylinePoints.length > 1)
+              // Shortest Road Route Polyline from Device to Bike
+              if (_routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: polylinePoints,
-                      strokeWidth: 4.0,
-                      color: AppColors.moss.withValues(alpha: 0.85),
+                      points: _routePoints,
+                      strokeWidth: 4.5,
+                      color: AppColors.moss,
+                      borderColor: Colors.white,
+                      borderStrokeWidth: 1.5,
                     ),
                   ],
                 ),
-              // Trail waypoint markers
-              if (widget.trail != null && widget.trail!.length > 1)
-                MarkerLayer(
-                  markers: widget.trail!.sublist(0, widget.trail!.length - 1).map((loc) {
-                    return Marker(
-                      point: LatLng(loc.lat, loc.lng),
-                      width: 14,
-                      height: 14,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.leaf,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 3,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              // Primary Bike Marker
-              if (widget.lastLocation != null)
-                MarkerLayer(
-                  markers: [
+              // Markers: Device location & Bicycle location
+              MarkerLayer(
+                markers: [
+                  if (_deviceLocation != null)
+                    Marker(
+                      point: _deviceLocation!,
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      child: _buildDeviceMarker(),
+                    ),
+                  if (widget.lastLocation != null)
                     Marker(
                       point: currentPoint,
                       width: 44,
@@ -132,27 +215,183 @@ class _CampusMapWidgetState extends State<CampusMapWidget> {
                         child: _buildPin(pinColor),
                       ),
                     ),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
-          // Recenter FAB inside map
+
+          // Route distance & walking time banner
+          if (_routeDistanceM != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: AppColors.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: AppColors.leaf,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _routeDistanceM! < 1000
+                            ? '${_routeDistanceM!.round()} m'
+                            : '${(_routeDistanceM! / 1000).toStringAsFixed(1)} km',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: AppColors.moss,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '· ~${(_routeDurationS != null ? (_routeDurationS! / 60).round().clamp(1, 999) : 1)} min on foot',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.ink.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _routePoints = [];
+                            _routeDistanceM = null;
+                            _routeDurationS = null;
+                            _routeError = null;
+                          });
+                        },
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: AppColors.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_routeError != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: AppColors.clay.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.clay),
+                      const SizedBox(width: 6),
+                      Text(
+                        _routeError!,
+                        style: const TextStyle(fontSize: 11, color: AppColors.clay),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // Map Action Buttons (Route & Recenter)
           Positioned(
             right: 12,
             bottom: 12,
-            child: FloatingActionButton.small(
-              heroTag: 'map_recenter_btn',
-              backgroundColor: Colors.white,
-              foregroundColor: AppColors.moss,
-              elevation: 2,
-              onPressed: () {
-                _mapController.move(currentPoint, 16.5);
-              },
-              child: const Icon(Icons.my_location, size: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'map_route_btn',
+                  backgroundColor: AppColors.moss,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  tooltip: 'Shortest road path to bike',
+                  onPressed: _isLoadingRoute ? null : fetchShortestPath,
+                  child: _isLoadingRoute
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.directions_rounded, size: 20),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: 'map_recenter_btn',
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.moss,
+                  elevation: 2,
+                  tooltip: 'Center on bicycle',
+                  onPressed: recenter,
+                  child: const Icon(Icons.my_location, size: 20),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDeviceMarker() {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1976D2).withValues(alpha: 0.25),
+            shape: BoxShape.circle,
+          ),
+        ),
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1976D2),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

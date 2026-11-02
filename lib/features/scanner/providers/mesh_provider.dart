@@ -137,7 +137,13 @@ class MeshProvider extends ChangeNotifier {
 
           final isBtOn = await BeaconScannerService.isBluetoothEnabled();
           if (!isBtOn) {
-            _statusMessage = 'Notice: Bluetooth is currently OFF. Please turn ON Bluetooth.';
+            final enabledBt = await BeaconScannerService.requestEnableBluetooth();
+            if (!enabledBt) {
+              _statusMessage = 'Bluetooth must be turned ON for mesh scanning.';
+              _isLoading = false;
+              notifyListeners();
+              return;
+            }
           }
         }
 

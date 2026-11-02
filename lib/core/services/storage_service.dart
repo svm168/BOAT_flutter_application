@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_endpoints.dart';
@@ -48,18 +47,6 @@ class StorageService {
   }
 
   String getBaseUrl() {
-    final saved = _prefs?.getString(_keyBaseUrl);
-    if (saved != null && saved.isNotEmpty) {
-      // In web browser (Chrome), 10.0.2.2 is unroutable. Auto-migrate to localhost:3000
-      if (kIsWeb && saved.contains('10.0.2.2')) {
-        return 'http://localhost:3000';
-      }
-      // On Android emulator, localhost is unroutable to host PC. Auto-migrate to 10.0.2.2:3000
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && saved.contains('localhost:3000')) {
-        return 'http://10.0.2.2:3000';
-      }
-      return saved;
-    }
     return ApiEndpoints.defaultBaseUrl;
   }
 

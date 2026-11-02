@@ -126,4 +126,14 @@ class BeaconScannerService {
       return false;
     }
   }
+
+  /// Requests the user to turn on Bluetooth via the system dialog.
+  static Future<bool> requestEnableBluetooth() async {
+    try {
+      final bool? enabled = await _channel.invokeMethod<bool>('requestEnableBluetooth');
+      return enabled ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

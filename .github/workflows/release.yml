@@ -1,4 +1,4 @@
-name: Build and Release APK
+name: Build and Release Mobile Apps
 
 on:
   push:
@@ -9,10 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build APK and Create Release
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -37,8 +36,38 @@ jobs:
       - name: Create GitHub Release and Upload APK
         uses: softprops/action-gh-release@v1
         with:
-          # This grabs the uniquely named APK we configured in android/app/build.gradle.kts
-          files: build/app/outputs/apk/release/*.apk 
+          files: build/app/outputs/apk/release/*.apk
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build iOS Archive (Unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r BOAT_mobile_ios.ipa Payload
+
+      - name: Upload iOS IPA to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: BOAT_mobile_ios.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
